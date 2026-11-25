@@ -47,7 +47,7 @@ const fx = {
       env.innerHTML =
         '<div data-burn style="position:relative;width:40%;overflow:visible"><img src="assets/envelope.webp" alt="Sealed envelope" style="display:block;width:100%;height:auto;filter:drop-shadow(0 20px 30px rgba(0,0,0,.5));-webkit-mask-image:linear-gradient(0deg,transparent 40%,#000 60%);mask-image:linear-gradient(0deg,transparent 40%,#000 60%);-webkit-mask-size:100% 300%;mask-size:100% 300%;-webkit-mask-position:0 0;mask-position:0 0"></div>' +
         '<a data-ks href="' + KICKSTARTER + '" target="_blank" rel="noopener" style="position:relative;z-index:6;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:60px;margin-top:6px;padding:12px 40px;border-radius:6px;background:#05ce78;color:#0b1f14;text-decoration:none;font:700 18px \'Figtree\',sans-serif;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 0 0 1px rgba(120,255,190,.5),0 0 24px rgba(5,206,120,.45),0 0 60px rgba(5,206,120,.25);transition:background .2s,box-shadow .2s" onmouseover="this.style.background=\'#2fe08f\';this.style.boxShadow=\'0 0 0 1px #8fffc4,0 0 30px rgba(5,206,120,.8),0 0 70px rgba(5,206,120,.45)\'" onmouseout="this.style.background=\'#05ce78\';this.style.boxShadow=\'0 0 0 1px rgba(120,255,190,.5),0 0 24px rgba(5,206,120,.45),0 0 60px rgba(5,206,120,.25)\'"><span>Follow the Kickstarter Campaign Now</span><span style="font-size:12px;font-weight:600;letter-spacing:.08em;opacity:.85">Extra bonus if we reach 1K before launch</span></a>' +
-        '<div style="font-family:\'Figtree\',sans-serif;font-weight:600;font-size:clamp(13px,1.1vw,16px);letter-spacing:.22em;line-height:1.6;color:#cbb9a6;text-align:center;text-transform:uppercase;text-wrap:balance;margin-top:4px">Your Secrets &amp; Sins are sealed, soon to be revealed, and rewarded at launch.</div>' +
+        '<div style="font-family:\'Figtree\',sans-serif;font-weight:600;font-size:clamp(13px,1.1vw,16px);letter-spacing:.22em;line-height:1.6;color:#cbb9a6;text-align:center;text-transform:uppercase;text-wrap:balance;margin-top:4px">Your Secrets &amp; Sins Rewards will soon be revealed. Keep an eye on your inbox.</div>' +
         '';
       const title = bar.nextElementSibling, desc = title && title.nextElementSibling;
       if (title) title.style.display = 'none';
@@ -65,6 +65,7 @@ const fx = {
     };
   },
   burnEnvelope(env, ks) {
+    fx.fire();
     this.pieceN = 0;
     const wrap = env.querySelector('[data-burn]'); if (!wrap) return;
     const img = wrap.querySelector('img'), D = 2200, W = wrap.offsetWidth, H = img.offsetHeight, SRC = img.src;
@@ -99,6 +100,7 @@ const fx = {
     edge.animate([{ bottom: '-8%' }, { bottom: '122%' }], { duration: D, easing: ease, fill: 'forwards' });
     edge.animate([{ opacity: 1 }, { opacity: 1, offset: .9 }, { opacity: 0 }], { duration: D, fill: 'forwards' });
     edge.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.5)' }, { filter: 'brightness(.85)' }], { duration: 160, iterations: Math.ceil(D / 160), direction: 'alternate' });
+    fx.ghost(wrap, D);
     const t0 = performance.now();
     const spawn = () => {
       const p = Math.min(1, (performance.now() - t0) / D); if (p >= .97) return;
@@ -220,6 +222,88 @@ fab.addEventListener('click', () => {
   go(); setTimeout(() => { go(); input.focus({ preventScroll: true }); }, 900);
 });
 
+// ---------- sounds: fetched when someone reaches for the email box, decoded during their tap and played ----------
+// ---------- through the AudioContext that tap unlocked, so phones still play them after the Mailchimp wait ----------
+const SOUNDS = { whisper: 'assets/whisper.mp3', fire: 'assets/fire.m4a' };
+const rawSound = {}, sound = {};
+const fetchSounds = () => {
+  for (const k in SOUNDS) if (!rawSound[k]) rawSound[k] = fetch(SOUNDS[k]).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+};
+const decodeSounds = () => {
+  fetchSounds();
+  for (const k in SOUNDS) if (!sound[k]) sound[k] = rawSound[k].then((b) => b && new Promise((ok) => fx.ac.decodeAudioData(b, ok, () => ok(null)))).catch(() => null);
+};
+const soon = (p, ms) => Promise.race([p || Promise.resolve(null), new Promise((r) => setTimeout(() => r(null), ms))]);
+fx.shush = async () => { // the whisper, or the design's synthesized shush if it can't load
+  const buf = fx.ac && await soon(sound.whisper, 1500);
+  if (!buf) { fx.shushSynth(); return; }
+  const src = fx.ac.createBufferSource(), g = fx.ac.createGain();
+  src.buffer = buf; g.gain.value = 0.9; src.connect(g); g.connect(fx.ac.destination); src.start();
+};
+fx.fire = async () => { // fades in with the flames, out as the envelope finishes burning
+  const buf = fx.ac && await soon(sound.fire, 800);
+  if (!buf) return;
+  const ac = fx.ac, t = ac.currentTime, src = ac.createBufferSource(), g = ac.createGain();
+  src.buffer = buf;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.85, t + 0.44);
+  g.gain.setValueAtTime(0.85, t + 2.4); g.gain.linearRampToValueAtTime(0, t + 3.4);
+  src.connect(g); g.connect(ac.destination); src.start(t); src.stop(t + 3.5);
+};
+
+// ---------- smoke skull: the skull on the wax seal lifts off as smoke while the envelope burns ----------
+const SKULL = 'M112 57C121 50 137 47 156 47C176 47 192 50 201 57C210 64 214 76 215 92C216 106 215 120 212 130C209 140 205 146 199 151L195 154C193 166 191 180 188 190C185 200 180 205 172 206L130 206C121 205 116 200 114 191C112 182 111 168 110 155L106 150C100 145 97 138 95 130C92 118 91 104 92 92C93 76 101 64 112 57Z' +
+  'M145 105C138 96 127 89 117 90C108 91 105 99 105 107C105 116 109 122 115 121C126 120 138 112 145 105Z' +
+  'M158 113C165 101 178 89 191 87C201 86 207 95 206 105C205 115 201 123 194 123C183 122 168 119 158 113Z' +
+  'M152 118C147 124 140 130 139 137C138 144 143 148 149 147L154 144L159 147C165 148 171 144 170 137C169 130 158 123 152 118Z' +
+  'M120 156L131 155L136 167L142 167L146 156L155 156L159 163L163 157L178 157L181 161L182 180L176 181L168 172L163 181L155 182L150 174L145 182L138 182L132 175L127 181L119 180Z';
+fx.ghost = (wrap, D) => {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const art = wrap.querySelector('img'), W = wrap.offsetWidth, H = art.offsetHeight;
+  if (!W || !H) return;
+  // where the skull sits on the envelope art (1240 x 486)
+  const L = 558 / 1240 * W, T = 194 / 486 * H, SW = 132 / 1240 * W, SH = 166 / 486 * H, id = 'smoke' + Date.now();
+  const g = document.createElement('div');
+  g.setAttribute('aria-hidden', 'true');
+  g.style.cssText = 'position:absolute;left:' + L + 'px;top:' + T + 'px;width:' + SW + 'px;height:' + SH + 'px;z-index:4;pointer-events:none;opacity:0;transform-origin:50% 75%;will-change:transform,opacity';
+  g.innerHTML = '<svg viewBox="88 44 132 166" width="100%" height="100%" style="display:block;overflow:visible">' +
+    '<defs><filter id="' + id + '" x="-60%" y="-80%" width="220%" height="260%" color-interpolation-filters="sRGB">' +
+    '<feTurbulence type="fractalNoise" baseFrequency="0.04 0.028" numOctaves="2" seed="11" result="n"/>' +
+    '<feOffset in="n" dy="0" result="m"/>' +
+    '<feDisplacementMap in="SourceGraphic" in2="m" scale="2" xChannelSelector="R" yChannelSelector="G" result="d"/>' +
+    '<feGaussianBlur in="d" stdDeviation="0.4" result="s"/>' +
+    '<feGaussianBlur in="d" stdDeviation="3" result="h"/>' +
+    '<feComponentTransfer in="h" result="h2"><feFuncA type="linear" slope=".75"/></feComponentTransfer>' +
+    '<feMerge><feMergeNode in="h2"/><feMergeNode in="s"/></feMerge></filter>' +
+    '<filter id="' + id + 't" x="-150%" y="-40%" width="400%" height="180%" color-interpolation-filters="sRGB">' +
+    '<feTurbulence type="fractalNoise" baseFrequency="0.07 0.02" numOctaves="2" seed="3" result="n"/>' +
+    '<feDisplacementMap in="SourceGraphic" in2="n" scale="30" xChannelSelector="R" yChannelSelector="G" result="d"/>' +
+    '<feGaussianBlur in="d" stdDeviation="7"/></filter></defs>' +
+    '<path class="tail" opacity="0" fill="#efe6dc" filter="url(#' + id + 't)" d="M120 186C112 232 134 270 146 318C150 330 154 330 158 318C170 270 192 232 184 186Z"/>' +
+    '<path d="' + SKULL + '" fill="#efe6dc" fill-rule="evenodd" filter="url(#' + id + ')"/></svg>';
+  wrap.appendChild(g);
+  const off = g.querySelector('feOffset'), disp = g.querySelector('feDisplacementMap'), [sharp, halo] = g.querySelectorAll('feGaussianBlur'), tail = g.querySelector('.tail');
+  const t0 = performance.now() + D * .4, dur = 3600;
+  const tick = (now) => {
+    if (!g.isConnected) return;
+    const t = (now - t0) / dur;
+    if (t < 0) { requestAnimationFrame(tick); return; }
+    if (t >= 1) { g.remove(); return; }
+    // clear skull first, then it stretches, wisps apart and thins out as it climbs
+    const op = t < .1 ? t / .1 * .88 : t < .3 ? .88 - (t - .1) * .4 : .8 * Math.pow(1 - (t - .3) / .7, 1.4);
+    const rise = H * 1.5 * (1 - Math.pow(1 - t, 1.6));
+    const sx = 1 + 1.6 * t, sy = 1 + 2.2 * t, sway = Math.sin(t * Math.PI * 1.7) * SW * .3 * t, skew = Math.sin(t * Math.PI * 2.3) * 8 * t;
+    g.style.opacity = op.toFixed(3);
+    g.style.transform = 'translate(' + sway.toFixed(1) + 'px,' + (-rise).toFixed(1) + 'px) scale(' + sx.toFixed(3) + ',' + sy.toFixed(3) + ') skewX(' + skew.toFixed(2) + 'deg)';
+    off.setAttribute('dy', (-70 * t).toFixed(1));
+    disp.setAttribute('scale', (6 + 44 * Math.pow(t, 1.2)).toFixed(1));
+    sharp.setAttribute('stdDeviation', (0.7 + 4.5 * Math.pow(t, 1.3)).toFixed(2));
+    halo.setAttribute('stdDeviation', (4 + 10 * t).toFixed(2));
+    tail.setAttribute('opacity', (Math.min(1, t / .15) * Math.pow(1 - t, .9) * .7).toFixed(3));
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+};
+
 // ---------- sign-up: saves to the Mailchimp audience "Collections FF BOTV" ----------
 const tell = (type) => { // the Strikingly page around this one holds the Meta Pixel
   if (parent === window) return;
@@ -265,7 +349,7 @@ const unlock = async (row) => {
   }
   input.blur();
   // sound has to be armed during the tap itself, before we wait on Mailchimp
-  try { fx.ac = fx.ac || new (window.AudioContext || window.webkitAudioContext)(); fx.ac.resume(); } catch (e) {}
+  try { fx.ac = fx.ac || new (window.AudioContext || window.webkitAudioContext)(); fx.ac.resume(); decodeSounds(); } catch (e) {}
   row.dataset.busy = '1'; btn.disabled = true;
   let error = '', fresh = false;
   try {
@@ -276,7 +360,7 @@ const unlock = async (row) => {
   delete row.dataset.busy; btn.disabled = false;
   if (error) { showError(row, error); return; }
   if (fresh) tell('lead');
-  fx.shushSynth(); fx.dimPage(); fx.sealEnvelope(row);
+  fx.shush(); fx.dimPage(); fx.sealEnvelope(row);
 };
 $$('[data-m=row]').forEach((row) => {
   const input = row.querySelector('input[type=email]');
@@ -289,6 +373,6 @@ $$('[data-m=row]').forEach((row) => {
   const ask = () => { input.placeholder = 'Enter your email'; input.dataset.ph = ''; };
   const rest = () => { if (document.activeElement !== input) { input.placeholder = 'Claim Subscriber-Only Rewards'; input.dataset.ph = 'claim'; } };
   input.addEventListener('mouseenter', ask); input.addEventListener('mouseleave', rest);
-  input.addEventListener('focus', () => { ask(); new Image().src = 'assets/envelope.webp'; });
+  input.addEventListener('focus', () => { ask(); new Image().src = 'assets/envelope.webp'; fetchSounds(); });
   input.addEventListener('blur', rest);
 });
