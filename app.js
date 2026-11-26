@@ -173,23 +173,42 @@ const fx = {
 };
 
 // ---------- observers. An explicit document root makes the margins work inside the Strikingly frame ----------
-const watch = (margin, fn) => {
-  try { return new IntersectionObserver(fn, { root: document, rootMargin: margin }); }
-  catch (e) { return new IntersectionObserver(fn, { rootMargin: margin }); }
+const watch = (margin, fn, threshold = 0) => {
+  try { return new IntersectionObserver(fn, { root: document, rootMargin: margin, threshold }); }
+  catch (e) { return new IntersectionObserver(fn, { rootMargin: margin, threshold }); }
 };
 const saver = !!(navigator.connection && navigator.connection.saveData);
 
-// ---------- videos: still frame first, video only when close, paused when off screen ----------
+// ---------- videos: still frame first, load when close, play only while really on screen ----------
+// iPhones refuse or pause muted video started while it is off screen (and inside the Strikingly frame),
+// so play is tried once it is visible, retried if the phone pauses it, and a tap plays it too
+// (Low Power Mode blocks autoplay entirely).
 const posters = watch('1400px 0px', (es) => es.forEach((e) => { if (e.isIntersecting) { e.target.poster = e.target.dataset.poster; posters.unobserve(e.target); } }));
-const players = watch('300px 0px', (es) => es.forEach((e) => {
-  const v = e.target;
-  if (!e.isIntersecting) { if (v.src) v.pause(); return; }
-  if (!v.poster) v.poster = v.dataset.poster;
-  if (saver) return;
-  if (!v.src) { v.muted = true; v.src = v.dataset.src; }
+const tryPlay = (v) => {
+  if (!v.src || !v.inView) return;
   const p = v.play(); if (p && p.catch) p.catch(() => {});
-}));
-$$('video.lz').forEach((v) => { posters.observe(v); players.observe(v); });
+};
+const load = (v) => {
+  if (v.src) return;
+  if (!v.poster) v.poster = v.dataset.poster;
+  v.muted = true; v.defaultMuted = true; v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+  v.autoplay = true; v.preload = 'auto'; v.src = v.dataset.src;
+  v.addEventListener('loadeddata', () => tryPlay(v));
+  v.addEventListener('canplay', () => tryPlay(v));
+  v.addEventListener('pause', () => { if (v.inView && (v.tries = (v.tries || 0) + 1) < 6) setTimeout(() => tryPlay(v), 500); });
+};
+const loaders = watch('700px 0px', (es) => es.forEach((e) => { if (e.isIntersecting && !saver) { load(e.target); loaders.unobserve(e.target); } }));
+const players = watch('0px', (es) => es.forEach((e) => {
+  const v = e.target, seen = e.isIntersecting && e.intersectionRatio >= 0.2;
+  if (seen && !v.inView) v.tries = 0;
+  v.inView = seen;
+  if (seen) { if (!saver) load(v); tryPlay(v); }
+  else if (!e.isIntersecting && v.src) v.pause();
+}), [0, 0.2, 0.5]);
+$$('video.lz').forEach((v) => {
+  posters.observe(v); loaders.observe(v); players.observe(v);
+  v.addEventListener('click', () => { load(v); v.inView = true; v.tries = 0; tryPlay(v); });
+});
 
 // ---------- card scenes ----------
 const scenes = watch('200px 0px', (es) => es.forEach((e) => { e.isIntersecting ? start(e.target) : stop(e.target); }));
