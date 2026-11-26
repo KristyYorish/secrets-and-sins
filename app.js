@@ -242,10 +242,37 @@ $$('[data-scene]').forEach((el) => scenes.observe(el));
 const fab = document.querySelector('.fab'), closing = document.querySelector('[data-screen-label="08 Closing sign-up"]');
 const onScroll = () => fab.classList.toggle('on', scrollY > 300 && closing.getBoundingClientRect().top >= innerHeight * 0.8);
 addEventListener('scroll', onScroll, { passive: true }); onScroll();
+// Glide to the closing email box and wait until the glide has really finished before touching the box.
+// Phones get no automatic keyboard: on iPhones it popped up mid-glide and stopped the scroll part-way.
+// There the box sits in the top third, glows, and the person's own tap opens the keyboard.
 fab.addEventListener('click', () => {
-  const input = closing.querySelector('input[type=email]'); if (!input) return;
-  const go = () => scrollTo({ top: scrollY + input.getBoundingClientRect().top - innerHeight / 2, behavior: 'smooth' });
-  go(); setTimeout(() => { go(); input.focus({ preventScroll: true }); }, 900);
+  const row = closing.querySelector('[data-m=row]'), input = row && row.querySelector('input[type=email]'); if (!input) return;
+  const touch = matchMedia('(hover: none)').matches;
+  const want = () => Math.round(scrollY + (touch
+    ? row.getBoundingClientRect().top - innerHeight * 0.3
+    : input.getBoundingClientRect().top + input.offsetHeight / 2 - innerHeight / 2));
+  let off = false, last = scrollY, still = 0, moved = false; const t0 = performance.now();
+  const stop = () => { off = true; };
+  addEventListener('touchstart', stop, { once: true, passive: true });
+  const arrive = () => {
+    removeEventListener('touchstart', stop);
+    const y = want(); if (Math.abs(y - scrollY) > 3) scrollTo(0, y);
+    row.animate([
+      { outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'rgba(255,189,89,0)', outlineOffset: '12px' },
+      { outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'rgba(255,189,89,.95)', outlineOffset: '5px', offset: 0.4 },
+      { outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'rgba(255,189,89,0)', outlineOffset: '3px' },
+    ], { duration: 1000, iterations: 2, easing: 'ease-out' });
+    if (touch) { input.placeholder = 'Enter your email'; input.dataset.ph = ''; }
+    else input.focus({ preventScroll: true });
+  };
+  const tick = () => {
+    if (off) return;
+    const y = scrollY; if (Math.abs(y - last) > 0.5) { moved = true; still = 0; } else still++; last = y;
+    const t = performance.now() - t0;
+    if ((still > 6 && (moved || t > 400)) || t > 3000) arrive(); else requestAnimationFrame(tick);
+  };
+  scrollTo({ top: want(), behavior: 'smooth' });
+  requestAnimationFrame(tick);
 });
 
 // ---------- sounds: fetched when someone reaches for the email box, decoded during their tap and played ----------
