@@ -74,22 +74,29 @@ const fx = {
     char.alt = ''; char.setAttribute('aria-hidden', 'true');
     char.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:auto;display:block;pointer-events:none;filter:brightness(.18) sepia(1) saturate(2);-webkit-mask-image:linear-gradient(0deg,transparent 40%,#000 41%,#000 45%,transparent 50%);mask-image:linear-gradient(0deg,transparent 40%,#000 41%,#000 45%,transparent 50%);-webkit-mask-size:100% 300%;mask-size:100% 300%;-webkit-mask-position:0 0;mask-position:0 0';
     wrap.appendChild(char);
-    const L = []; for (let x = 0; x <= 100; x += rnd(1.2, 3.6)) L.push([Math.min(100, x), rnd(-4.5, 4.5) + (Math.random() < .12 ? rnd(-3, 3) : 0)]); L.push([100, rnd(-4, 4)]);
-    const L2 = L.map(([x, d]) => [x, d - rnd(5, 9)]);
+    const wave = (n, amp) => { const v = Array.from({ length: n + 2 }, () => rnd(-1, 1)); return x => { const t = x / 100 * n, i = Math.floor(t), f = t - i, s = (1 - Math.cos(f * Math.PI)) / 2; return amp * (v[i] * (1 - s) + v[i + 1] * s); }; };
+    const w1 = wave(rnd(2, 3.5), 6), w2 = wave(rnd(7, 11), 2.6), w3 = wave(rnd(22, 32), 1.1), w4 = wave(rnd(60, 80), .45), tilt = rnd(-2.5, 2.5);
+    const bites = Array.from({ length: 2 + Math.floor(Math.random() * 3) }, () => [rnd(6, 94), rnd(1.4, 4), rnd(2.5, 5.5)]);
+    const L = []; for (let x = 0; x <= 100.001; x += .5) L.push([Math.min(100, x), w1(x) + w2(x) + w3(x) + w4(x) + tilt * (x - 50) / 50 - bites.reduce((a, [c, w, h]) => a + h * Math.exp(-(((x - c) / w) ** 2)), 0)]);
+    const cw = wave(rnd(4, 7), 1.8);
+    const L2 = L.map(([x, d]) => [x, d - 6.5 - cw(x)]);
+    const B = Math.ceil(101 - Math.min(...L2.map(p => p[1]))), S = Math.max(230, Math.ceil(B + Math.max(...L.map(p => p[1])) + 101));
+    const gid = 'b' + Math.random().toString(36).slice(2, 8);
     const svgUrl = (inner, vh) => 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 ' + vh + '" preserveAspectRatio="none">' + inner + '</svg>') + '")';
     const line = (pts, base) => pts.map(([x, d]) => x.toFixed(2) + ',' + (base + d).toFixed(2)).join(' ');
-    const mainMask = svgUrl('<polygon points="0,-10 100,-10 ' + line(L.slice().reverse(), 108) + '" fill="#000"/>', 230);
-    const charMask = svgUrl('<polygon points="' + line(L, 108) + ' ' + line(L2.slice().reverse(), 108) + '" fill="#000"/>', 230);
-    [[img, mainMask], [char, charMask]].forEach(([el, m]) => { el.style.webkitMaskImage = m; el.style.maskImage = m; el.style.webkitMaskSize = '100% 230%'; el.style.maskSize = '100% 230%'; el.style.webkitMaskRepeat = 'no-repeat'; el.style.maskRepeat = 'no-repeat'; });
+    const mainMask = svgUrl('<polygon points="0,-10 100,-10 ' + line(L.slice().reverse(), B) + '" fill="#000"/>', S);
+    const charMask = svgUrl('<defs><filter id="s" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation="0 1.6"/></filter><clipPath id="c"><polygon points="0,-10 100,-10 ' + line(L.slice().reverse(), B) + '"/></clipPath></defs><g clip-path="url(#c)"><polygon points="' + line(L, B + 3) + ' ' + line(L2.slice().reverse(), B) + '" fill="#000" filter="url(#s)"/></g>', S);
+    [[img, mainMask], [char, charMask]].forEach(([el, m]) => { el.style.webkitMaskImage = m; el.style.maskImage = m; el.style.webkitMaskSize = '100% ' + S + '%'; el.style.maskSize = '100% ' + S + '%'; el.style.webkitMaskRepeat = 'no-repeat'; el.style.maskRepeat = 'no-repeat'; });
     const edge = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     edge.setAttribute('viewBox', '0 0 100 16'); edge.setAttribute('preserveAspectRatio', 'none'); edge.setAttribute('aria-hidden', 'true');
     const eh = H * .16;
     edge.style.cssText = 'position:absolute;left:0;width:100%;height:' + eh + 'px;bottom:0;transform:translateY(50%);overflow:visible;pointer-events:none;mix-blend-mode:screen';
     const ep = line(L, 8);
-    edge.innerHTML = '<defs><filter id="emb" x="-10%" y="-200%" width="120%" height="500%"><feGaussianBlur stdDeviation="1.1"/></filter></defs>' +
-      '<polyline points="' + ep + '" fill="none" stroke="#ff5a24" stroke-width="2.6" vector-effect="non-scaling-stroke" style="stroke-width:7px" filter="url(#emb)" opacity=".9"/>' +
+    const gl = Array.from({ length: 14 }, (_, i) => '<stop offset="' + (i / 13).toFixed(3) + '" stop-color="#fff" stop-opacity="' + rnd(.3, 1).toFixed(2) + '"/>').join('');
+    edge.innerHTML = '<defs><filter id="' + gid + 'f" x="-10%" y="-200%" width="120%" height="500%"><feGaussianBlur stdDeviation="1.1"/></filter><linearGradient id="' + gid + 'g">' + gl + '</linearGradient><mask id="' + gid + 'm" maskUnits="userSpaceOnUse" x="-5" y="-40" width="110" height="96"><rect x="-5" y="-40" width="110" height="96" fill="url(#' + gid + 'g)"/></mask></defs><g mask="url(#' + gid + 'm)">' +
+      '<polyline points="' + ep + '" fill="none" stroke="#ff5a24" stroke-width="2.6" vector-effect="non-scaling-stroke" style="stroke-width:7px" filter="url(#' + gid + 'f)" opacity=".9"/>' +
       '<polyline points="' + ep + '" fill="none" stroke="#ff9a3c" stroke-width="1.6" vector-effect="non-scaling-stroke" style="stroke-width:3px"/>' +
-      '<polyline points="' + ep + '" fill="none" stroke="#ffe0a0" stroke-width="1" vector-effect="non-scaling-stroke" style="stroke-width:1.2px"/>';
+      '<polyline points="' + ep + '" fill="none" stroke="#ffe0a0" stroke-width="1" vector-effect="non-scaling-stroke" style="stroke-width:1.2px"/></g>';
     const clip = document.createElement('div');
     clip.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:' + H + 'px;overflow:hidden;pointer-events:none';
     clip.appendChild(edge); wrap.appendChild(clip);
@@ -97,14 +104,14 @@ const fx = {
     const mk = (from, to) => [{ maskPosition: from, webkitMaskPosition: from }, { maskPosition: to, webkitMaskPosition: to }];
     img.animate(mk('0 0', '0 100%'), { duration: D, easing: ease, fill: 'forwards' });
     char.animate(mk('0 0', '0 100%'), { duration: D, easing: ease, fill: 'forwards' });
-    edge.animate([{ bottom: '-8%' }, { bottom: '122%' }], { duration: D, easing: ease, fill: 'forwards' });
+    edge.animate([{ bottom: (100 - B) + '%' }, { bottom: (S - B) + '%' }], { duration: D, easing: ease, fill: 'forwards' });
     edge.animate([{ opacity: 1 }, { opacity: 1, offset: .9 }, { opacity: 0 }], { duration: D, fill: 'forwards' });
     edge.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.5)' }, { filter: 'brightness(.85)' }], { duration: 160, iterations: Math.ceil(D / 160), direction: 'alternate' });
     fx.ghost(wrap, D);
     const t0 = performance.now();
     const spawn = () => {
       const p = Math.min(1, (performance.now() - t0) / D); if (p >= .97) return;
-      const q = p * p * (3 - 2 * p), lineY = Math.max(0, Math.min(H, H * (1.08 - 1.3 * q)));
+      const q = p * p * (3 - 2 * p), lineY = Math.max(0, Math.min(H, H * (B - (S - 100) * q) / 100));
       for (let k = 0; k < 2; k++) {
         const sz = rnd(10, 26), x = rnd(0, W - sz), y = Math.max(0, lineY - sz * .6);
         const pts = Array.from({ length: 6 }, (_, i) => { const ang = i / 6 * Math.PI * 2, r = rnd(32, 50); return (50 + Math.cos(ang) * r).toFixed(0) + '% ' + (50 + Math.sin(ang) * r).toFixed(0) + '%'; }).join(',');
